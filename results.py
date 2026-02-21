@@ -1,16 +1,31 @@
+import os
+import time
+import threading
+import json
+from datetime import datetime
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-import time
-import threading
-import os
-import json
-from datetime import datetime
-from pathlib import Path
+from webdriver_manager.chrome import ChromeDriverManager
+
+def get_chrome_options():
+    """Get Chrome options configured for Render"""
+    chrome_options = Options()
+    chrome_options.add_argument('--headless=new')
+    chrome_options.add_argument('--no-sandbox')
+    chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--window-size=1920,1080')
+    
+    # Important for Render: Set Chrome binary location
+    if os.path.exists('/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'):
+        chrome_options.binary_location = '/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'
+    
+    return chrome_options
 
 def setup_results_folder():
     """
@@ -155,16 +170,12 @@ def scrape_odileague_all_results():
     # Setup results folder first
     session_folder, timestamp = setup_results_folder()
     
-    # Setup Chrome options
-    options = webdriver.ChromeOptions()
-    # options.add_argument('--headless')  # Uncomment to run in background
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--window-size=1920,1080')
+    # Setup Chrome options using the configured function
+    chrome_options = get_chrome_options()
     
     # Auto-download and setup ChromeDriver
     service = Service(ChromeDriverManager().install())
-    driver = webdriver.Chrome(service=service, options=options)
+    driver = webdriver.Chrome(service=service, options=chrome_options)
     
     try:
         print("\n" + "=" * 70)
