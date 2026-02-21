@@ -1,23 +1,21 @@
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, ElementClickInterceptedException
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
+import os
 import time
 import json
 import csv
 from datetime import datetime
-import os
-import shutil
-from pathlib import Path
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from selenium.webdriver.chrome.service import Service
+from webdriver_manager.chrome import ChromeDriverManager
 
 class OdileagueScraper:
     def __init__(self):
-        self.setup_driver()
-        self.wait = WebDriverWait(self.driver, 10)
+        self.driver = None
+        self.wait = None
         self.markets_to_scrape = [
             "1X2 and OV/UN 1.5",
             "1X2 and OV/UN 2.5", 
@@ -30,22 +28,39 @@ class OdileagueScraper:
         self.timestamp_folder = None
         self.base_folder = "odileague_data"
         
-    def setup_driver(self):
-        """Setup Chrome driver with options"""
+    def get_chrome_options(self):
+        """Get Chrome options configured for Render"""
         chrome_options = Options()
-        chrome_options.add_argument("--window-size=1920,1080")
-        chrome_options.add_argument("--disable-notifications")
-        chrome_options.add_argument("--disable-popup-blocking")
-        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_argument('--headless=new')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-notifications')
+        chrome_options.add_argument('--disable-popup-blocking')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
         chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
         chrome_options.add_experimental_option('useAutomationExtension', False)
         
-        # Uncomment the line below to run in headless mode
-        # chrome_options.add_argument("--headless")
+        # Important for Render: Set Chrome binary location
+        if os.path.exists('/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'):
+            chrome_options.binary_location = '/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'
         
-        # Use webdriver-manager to automatically handle ChromeDriver
-        service = Service(ChromeDriverManager().install())
-        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        return chrome_options
+        
+    def setup_driver(self):
+        """Setup Chrome driver with options"""
+        chrome_options = self.get_chrome_options()
+        
+        # Use webdriver-manager for local development, fallback for Render
+        try:
+            service = Service(ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        except:
+            # For Render environment
+            self.driver = webdriver.Chrome(options=chrome_options)
+            
+        self.wait = WebDriverWait(self.driver, 10)
         
     def create_folder_structure(self):
         """Create timestamp folder and market subfolders"""
@@ -190,7 +205,7 @@ class OdileagueScraper:
                                     'draw': x12_buttons[1].find_element(By.CLASS_NAME, "o-2").text,
                                     'away': x12_buttons[2].find_element(By.CLASS_NAME, "o-2").text
                                 }
-                        except Exception as e:
+                        except Exception:
                             pass
                         
                         # Try to scrape Over/Under odds if present
@@ -203,7 +218,7 @@ class OdileagueScraper:
                                     'over': ou_buttons[0].find_element(By.CLASS_NAME, "o-2").text,
                                     'under': ou_buttons[1].find_element(By.CLASS_NAME, "o-2").text
                                 }
-                        except Exception as e:
+                        except Exception:
                             pass
                         
                         # Try to scrape Correct Score odds if present
@@ -225,7 +240,7 @@ class OdileagueScraper:
                                 
                                 if cs_odds:
                                     match_dict['odds']['correct_score'] = cs_odds
-                            except Exception as e:
+                            except Exception:
                                 pass
                         
                         # Only add match if we have at least one odds
@@ -377,7 +392,7 @@ class OdileagueScraper:
             # Click the Live tab if needed
             try:
                 live_tab = self.driver.find_element(By.CSS_SELECTOR, ".tbs li.live")
-                if not "active" in live_tab.get_attribute("class"):
+                if "active" not in live_tab.get_attribute("class"):
                     live_tab.click()
                     time.sleep(2)
             except:
@@ -439,8 +454,9 @@ class OdileagueScraper:
             time.sleep(1)
             
         try:
-            self.driver.quit()
-            print("Browser closed automatically.")
+            if self.driver:
+                self.driver.quit()
+                print("Browser closed automatically.")
         except:
             print("Browser already closed.")
             
@@ -451,6 +467,9 @@ class OdileagueScraper:
             print(f"Markets to scrape: {len(self.markets_to_scrape)}")
             for i, market in enumerate(self.markets_to_scrape, 1):
                 print(f"  {i}. {market}")
+            
+            # Setup driver
+            self.setup_driver()
             
             data = self.scrape_all_markets()
             
@@ -476,7 +495,7 @@ class OdileagueScraper:
                     
         except KeyboardInterrupt:
             print("\n\nScraping interrupted by user. Saving current data...")
-            if self.all_markets_data:
+            if self.all_markets_data and self.timestamp_folder:
                 self.save_summary_files()
                 
         except Exception as e:
