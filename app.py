@@ -23,12 +23,12 @@ def run_scrapers():
             scraper.scrape_and_save()
             scraper.close()
             
-            logging.info("Scrapers completed. Waiting 6 hours...")
-            time.sleep(6 * 60 * 60)  # Run every 6 hours
+            logging.info("Scrapers completed. Next run in 10 minutes...")
+            time.sleep(10 * 60)  # Run every 10 minutes (10 minutes * 60 seconds)
             
         except Exception as e:
             logging.error(f"Error in scrapers: {e}")
-            time.sleep(60 * 60)  # Wait 1 hour on error
+            time.sleep(10 * 60)  # Also wait 10 minutes on error
 
 @app.route('/')
 def home():
