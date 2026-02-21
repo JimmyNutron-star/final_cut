@@ -1,18 +1,18 @@
+import os
+import time
+import logging
+import json
+import re
+import traceback
+from datetime import datetime
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from selenium.webdriver.chrome.service import Service
-from webdriver_manager.chrome import ChromeDriverManager
 import pandas as pd
-import time
-import logging
-import os
-from datetime import datetime
-import json
-import re
-import traceback
 
 # Set up logging
 logging.basicConfig(
@@ -52,33 +52,57 @@ class OdileagueStandingsScraper:
         logger.info(f"Created run directory: {run_dir}")
         return run_dir, timestamp
     
+    def get_chrome_options(self):
+        """Get Chrome options configured for Render"""
+        chrome_options = Options()
+        
+        if self.headless:
+            chrome_options.add_argument('--headless=new')
+        
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
+        
+        # Add user agent
+        chrome_options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        
+        # Important for Render: Set Chrome binary location if it exists
+        render_chrome_path = '/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'
+        if os.path.exists(render_chrome_path):
+            chrome_options.binary_location = render_chrome_path
+            logger.info(f"Using Chrome binary at: {render_chrome_path}")
+        
+        return chrome_options
+    
     def setup_driver(self):
         """Configure and initialize the Chrome driver"""
         try:
-            options = webdriver.ChromeOptions()
+            chrome_options = self.get_chrome_options()
             
-            if self.headless:
-                options.add_argument('--headless')
-            
-            # Common options to avoid detection
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-blink-features=AutomationControlled')
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
-            
-            # Add user agent
-            options.add_argument('--user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
-            
-            # Use webdriver-manager to handle driver installation
-            service = Service(ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=options)
+            # For Render, we don't use webdriver-manager, just use default service
+            self.driver = webdriver.Chrome(options=chrome_options)
             self.wait = WebDriverWait(self.driver, 10)
             logger.info("Chrome driver initialized successfully")
             
         except Exception as e:
             logger.error(f"Error setting up Chrome driver: {str(e)}")
-            raise
+            # Fallback to webdriver-manager for local development
+            try:
+                from webdriver_manager.chrome import ChromeDriverManager
+                from selenium.webdriver.chrome.service import Service
+                
+                logger.info("Falling back to webdriver-manager...")
+                service = Service(ChromeDriverManager().install())
+                self.driver = webdriver.Chrome(service=service, options=self.get_chrome_options())
+                self.wait = WebDriverWait(self.driver, 10)
+                logger.info("Chrome driver initialized with webdriver-manager")
+            except Exception as e2:
+                logger.error(f"Fallback also failed: {str(e2)}")
+                raise
     
     def close_popup(self):
         """Close the initial popup if it appears"""
@@ -117,7 +141,7 @@ class OdileagueStandingsScraper:
         Based on the HTML structure: <td><div class="w">W</div></td> etc.
         """
         try:
-            # Method 1: Look for all form indicators (div.w, div.d, div.l) - THIS IS THE CORRECT METHOD
+            # Method 1: Look for all form indicators (div.w, div.d, div.l)
             form_indicators = form_cell.find_elements(By.CSS_SELECTOR, "div.w, div.d, div.l")
             
             if form_indicators:
@@ -159,43 +183,21 @@ class OdileagueStandingsScraper:
                     full_form = ''.join(form_states)
                     return form_states, full_form
             
-            # Method 3: Look for a container with multiple form items
-            form_container = form_cell.find_elements(By.CSS_SELECTOR, ".form-container, .form-items, .form, .form-row")
-            if form_container:
-                indicators = form_container[0].find_elements(By.CSS_SELECTOR, "div.w, div.d, div.l")
-                if indicators:
-                    all_form_states = [indicator.text.strip() for indicator in indicators]
-                    if len(all_form_states) >= 5:
-                        form_states = all_form_states[-5:]
-                    else:
-                        form_states = all_form_states
-                    full_form = ''.join(all_form_states)
-                    return form_states, full_form
-            
-            # Method 4: Try to get from HTML content using regex
+            # Method 3: Try to get from HTML content using regex
             cell_html = form_cell.get_attribute('innerHTML')
-            # Look for patterns like >W<, >D<, >L< or class="w", class="d", class="l"
-            form_matches = re.findall(r'>([WDL])<|class="[wdl]', cell_html)
+            # Look for patterns like >W<, >D<, >L<
+            form_matches = re.findall(r'>([WDL])<', cell_html)
+            
             if form_matches:
-                # Clean up matches
-                clean_matches = []
-                for match in form_matches:
-                    if match and match in ['W', 'D', 'L']:
-                        clean_matches.append(match)
-                    elif match == '':
-                        # This was a class match, we need to infer the letter
-                        pass
-                
-                if clean_matches:
-                    if len(clean_matches) >= 5:
-                        form_states = clean_matches[-5:]
-                    else:
-                        form_states = clean_matches
-                    full_form = ''.join(clean_matches)
-                    return form_states, full_form
+                if len(form_matches) >= 5:
+                    form_states = form_matches[-5:]
+                else:
+                    form_states = form_matches
+                full_form = ''.join(form_matches)
+                return form_states, full_form
             
             # If all methods fail, return empty
-            logger.warning(f"Could not extract form states from cell: {form_cell.get_attribute('innerHTML')}")
+            logger.warning(f"Could not extract form states from cell")
             return [], ""
             
         except Exception as e:
@@ -225,14 +227,6 @@ class OdileagueStandingsScraper:
             # Find the table
             table = standings_container.find_element(By.TAG_NAME, "table")
             
-            # Get headers
-            headers = []
-            thead = table.find_element(By.TAG_NAME, "thead")
-            for th in thead.find_elements(By.TAG_NAME, "th"):
-                headers.append(th.text)
-            
-            logger.info(f"Table headers: {headers}")
-            
             # Get table body
             tbody = table.find_element(By.TAG_NAME, "tbody")
             rows = tbody.find_elements(By.TAG_NAME, "tr")
@@ -246,11 +240,6 @@ class OdileagueStandingsScraper:
                     
                     # Extract detailed form states
                     last_5_form, full_form = self.extract_form_states(form_cell)
-                    
-                    # Debug: Print form cell HTML for first few rows
-                    if len(standings_data) < 3:
-                        logger.debug(f"Form cell HTML: {form_cell.get_attribute('innerHTML')}")
-                        logger.debug(f"Extracted form: {last_5_form}")
                     
                     # Get the primary form indicator (for backward compatibility)
                     try:
@@ -669,7 +658,11 @@ def main():
     """Main function to run the scraper"""
     scraper = None
     try:
-        scraper = EnhancedOdileagueScraper(headless=False)
+        # Check if running on Render
+        is_render = os.path.exists('/opt/render/project/.render')
+        logger.info(f"Running on Render: {is_render}")
+        
+        scraper = EnhancedOdileagueScraper(headless=True)  # Always headless on Render
         standings = scraper.scrape_and_save()
         
         if standings:
@@ -735,7 +728,7 @@ if __name__ == "__main__":
             print("  --list     : List previous scrape runs")
             print("  --headless : Run in headless mode (no browser window)")
             print("  --help     : Show this help message")
-            print("  (no args)  : Run with visible browser")
+            print("  (no args)  : Run with visible browser (will use headless on Render)")
         else:
             print(f"Unknown option: {sys.argv[1]}")
             print("Use --help for usage information")
