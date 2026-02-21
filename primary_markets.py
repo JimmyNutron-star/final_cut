@@ -1,8 +1,9 @@
+import os
 import time
 import json
-import os
 import threading
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -24,18 +25,20 @@ logging.basicConfig(
 )
 
 class OdileagueScraper:
-    def __init__(self, headless=False, auto_close_delay=5):
+    def __init__(self, headless=False, auto_close_delay=5, render_mode=False):
         """
         Initialize the Odileague scraper
         
         Args:
             headless (bool): Run browser in headless mode
             auto_close_delay (int): Seconds to wait before auto-closing browser
+            render_mode (bool): Whether running on Render platform
         """
         self.driver = None
         self.wait = None
         self.headless = headless
         self.auto_close_delay = auto_close_delay
+        self.render_mode = render_mode
         self.url = "https://odibets.com/odileague"
         self.timestamp_value = None
         self.base_output_dir = None
@@ -49,31 +52,71 @@ class OdileagueScraper:
             ('OV/UN 2.5', '05_over_under_2_5'),
             ('OV/UN 3.5', '06_over_under_3_5')
         ])
+    
+    def get_chrome_options(self):
+        """Get Chrome options configured for Render or local environment"""
+        chrome_options = Options()
         
-    def setup_driver(self):
-        """Configure and initialize the Chrome driver"""
-        options = webdriver.ChromeOptions()
+        if self.headless or self.render_mode:
+            chrome_options.add_argument('--headless=new')
         
-        if self.headless:
-            options.add_argument('--headless')
+        # Essential arguments for both Render and local
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
+        chrome_options.add_argument('--disable-extensions')
+        chrome_options.add_argument('--disable-setuid-sandbox')
+        chrome_options.add_argument('--remote-debugging-port=9222')
         
         # Additional options to avoid detection
-        options.add_argument('--disable-blink-features=AutomationControlled')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        options.add_experimental_option('useAutomationExtension', False)
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option('useAutomationExtension', False)
         
         # User agent to mimic real browser
-        options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        chrome_options.add_argument('user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
         
-        self.driver = webdriver.Chrome(options=options)
-        self.wait = WebDriverWait(self.driver, 15)
+        # Important for Render: Set Chrome binary location if running on Render
+        if self.render_mode:
+            render_chrome_path = '/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'
+            if os.path.exists(render_chrome_path):
+                chrome_options.binary_location = render_chrome_path
+                logging.info(f"Using Chrome binary at: {render_chrome_path}")
+            else:
+                logging.warning("Render Chrome binary not found, using system Chrome")
         
-        # Execute script to prevent detection
-        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
-        
+        return chrome_options
+    
+    def setup_driver(self):
+        """Configure and initialize the Chrome driver"""
+        try:
+            chrome_options = self.get_chrome_options()
+            
+            # For Render, you might need to specify the path to chromedriver
+            if self.render_mode:
+                # If chromedriver is in a specific path on Render
+                chromedriver_path = '/opt/render/project/.render/chrome/chromedriver'
+                if os.path.exists(chromedriver_path):
+                    from selenium.webdriver.chrome.service import Service
+                    service = Service(executable_path=chromedriver_path)
+                    self.driver = webdriver.Chrome(service=service, options=chrome_options)
+                else:
+                    self.driver = webdriver.Chrome(options=chrome_options)
+            else:
+                self.driver = webdriver.Chrome(options=chrome_options)
+            
+            self.wait = WebDriverWait(self.driver, 15)
+            
+            # Execute script to prevent detection
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            
+            logging.info("Chrome driver setup successfully")
+            
+        except Exception as e:
+            logging.error(f"Error setting up Chrome driver: {e}")
+            raise
+    
     def close_popup(self):
         """Close the initial popup/roadblock if it appears"""
         try:
@@ -700,7 +743,7 @@ class OdileagueScraper:
         """
         Automatically close the browser after the specified delay
         """
-        if self.auto_close_delay > 0:
+        if self.auto_close_delay > 0 and not self.render_mode:
             logging.info(f"Browser will close automatically in {self.auto_close_delay} seconds...")
             
             # Countdown timer
@@ -710,28 +753,14 @@ class OdileagueScraper:
                 time.sleep(1)
             
             print("\n" + " " * 30)  # Clear the countdown line
-            
+        
         if self.driver:
             self.driver.quit()
-            logging.info("Browser closed automatically")
+            logging.info("Browser closed")
     
     def run(self):
         """Main execution method"""
         try:
-            logging.info("Starting Odileague scraper - Third Timestamp Only")
-            print("\n" + "="*70)
-            print("ODILEAGUE WEB SCRAPER - THIRD TIMESTAMP ONLY")
-            print("="*70)
-            print("\nThis script will automatically:")
-            print("1. Open the Odileague page")
-            print("2. Close any popup that appears")
-            print("3. Find the third timestamp")
-            print("4. Scrape the first 5 visible markets")
-            print("5. Select OV/UN 3.5 from dropdown menu")
-            print("6. Save each market's data in its own folder")
-            print(f"7. Browser will auto-close after {self.auto_close_delay} seconds")
-            print("\n" + "="*70)
-            
             # Setup driver
             self.setup_driver()
             
@@ -780,27 +809,67 @@ class OdileagueScraper:
                 self.driver.quit()
                 logging.info("Browser closed due to error")
 
-# Simplified function for quick use
-def quick_scrape(headless=False, auto_close_delay=5):
+# Function to run on Render
+def run_on_render():
     """
-    Quick function to scrape with default settings
+    Configure and run the scraper specifically for Render platform
+    """
+    print("="*70)
+    print("ODILEAGUE SCRAPER - RENDER DEPLOYMENT")
+    print("="*70)
     
-    Args:
-        headless (bool): Run browser in headless mode
-        auto_close_delay (int): Seconds to wait before auto-closing
-    """
-    scraper = OdileagueScraper(headless=headless, auto_close_delay=auto_close_delay)
-    scraper.run()
+    # Configure for Render
+    scraper = OdileagueScraper(
+        headless=True,  # Always headless on Render
+        auto_close_delay=0,  # No need for delay on Render
+        render_mode=True
+    )
+    
+    try:
+        scraper.run()
+    except Exception as e:
+        logging.error(f"Render execution failed: {e}")
+        return False
+    
+    return True
 
 # Main execution
 if __name__ == "__main__":
-    # You can modify these parameters
-    HEADLESS_MODE = False  # Set to True to run in background
-    AUTO_CLOSE_DELAY = 5   # Seconds before browser auto-closes
+    import sys
     
-    # Run the scraper
-    quick_scrape(headless=HEADLESS_MODE, auto_close_delay=AUTO_CLOSE_DELAY)
+    # Check if running on Render (you can set an environment variable)
+    RUNNING_ON_RENDER = os.environ.get('RENDER', False) or len(sys.argv) > 1 and sys.argv[1] == '--render'
     
-    print("\n" + "="*70)
-    print("✅ Scraping complete! Check the timestamp folder for organized results.")
-    print("="*70)
+    if RUNNING_ON_RENDER:
+        # Run in Render mode
+        success = run_on_render()
+        sys.exit(0 if success else 1)
+    else:
+        # Run locally with user-friendly display
+        HEADLESS_MODE = False  # Set to True to run in background
+        AUTO_CLOSE_DELAY = 5   # Seconds before browser auto-closes
+        
+        print("="*70)
+        print("ODILEAGUE WEB SCRAPER - THIRD TIMESTAMP ONLY")
+        print("="*70)
+        print("\nThis script will automatically:")
+        print("1. Open the Odileague page")
+        print("2. Close any popup that appears")
+        print("3. Find the third timestamp")
+        print("4. Scrape the first 5 visible markets")
+        print("5. Select OV/UN 3.5 from dropdown menu")
+        print("6. Save each market's data in its own folder")
+        print(f"7. Browser will auto-close after {AUTO_CLOSE_DELAY} seconds")
+        print("\n" + "="*70)
+        
+        # Run the scraper
+        scraper = OdileagueScraper(
+            headless=HEADLESS_MODE, 
+            auto_close_delay=AUTO_CLOSE_DELAY,
+            render_mode=False
+        )
+        scraper.run()
+        
+        print("\n" + "="*70)
+        print("✅ Scraping complete! Check the timestamp folder for organized results.")
+        print("="*70)
