@@ -4,32 +4,37 @@ import csv
 import time
 import datetime
 from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
 
 class OdileagueScraper:
-    def __init__(self, headless=False):
-        """Initialize the scraper with Chrome options"""
-        self.options = Options()
-        if headless:
-            self.options.add_argument("--headless")
-        self.options.add_argument("--window-size=1920,1080")
-        self.options.add_argument("--disable-notifications")
-        self.options.add_argument("--disable-popup-blocking")
-        
-        # Initialize the driver
-        self.driver = webdriver.Chrome(
-            service=Service(ChromeDriverManager().install()),
-            options=self.options
-        )
+    def __init__(self, headless=True):
+        """Initialize the scraper with Chrome options configured for Render"""
+        self.options = self.get_chrome_options()
+        self.driver = webdriver.Chrome(options=self.options)
         self.wait = WebDriverWait(self.driver, 10)
         self.base_url = "https://odibets.com/odileague"
         
+    def get_chrome_options(self):
+        """Get Chrome options configured for Render"""
+        chrome_options = Options()
+        chrome_options.add_argument('--headless=new')
+        chrome_options.add_argument('--no-sandbox')
+        chrome_options.add_argument('--disable-dev-shm-usage')
+        chrome_options.add_argument('--disable-gpu')
+        chrome_options.add_argument('--window-size=1920,1080')
+        chrome_options.add_argument('--disable-notifications')
+        chrome_options.add_argument('--disable-popup-blocking')
+        
+        # Important for Render: Set Chrome binary location
+        if os.path.exists('/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'):
+            chrome_options.binary_location = '/opt/render/project/.render/chrome/opt/google/chrome/google-chrome'
+        
+        return chrome_options
+    
     def close_popup(self):
         """Close the roadblock popup if it appears"""
         try:
@@ -106,7 +111,7 @@ class OdileagueScraper:
                         home_team = team_elements[0].text
                         away_team = team_elements[1].text
                         
-                        # Find odds for this market (structure might vary)
+                        # Find odds for this market
                         odds_buttons = game.find_elements(By.CSS_SELECTOR, ".odds button")
                         
                         match_data = {
@@ -268,6 +273,9 @@ class OdileagueScraper:
     def save_to_json(self, data, filepath):
         """Save data to JSON file"""
         try:
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            
             with open(filepath, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=4, ensure_ascii=False)
             print(f"✅ JSON saved: {filepath}")
@@ -280,6 +288,9 @@ class OdileagueScraper:
             if not data:
                 print(f"⚠️ No data to save for {market_type}")
                 return
+            
+            # Create directory if it doesn't exist
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
                 
             with open(filepath, 'w', newline='', encoding='utf-8') as f:
                 if market_type == "1x2ng":
@@ -444,8 +455,8 @@ def main():
     print("ODILEAGUE WEB SCRAPER")
     print("="*50)
     
-    # Create scraper instance (set headless=True to run in background)
-    scraper = OdileagueScraper(headless=False)
+    # Create scraper instance with Render-compatible options
+    scraper = OdileagueScraper(headless=True)
     
     try:
         # Scrape all markets from the third timestamp (index 2)
