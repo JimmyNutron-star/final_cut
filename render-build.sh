@@ -3,8 +3,8 @@ set -o errexit
 
 echo "Starting build process..."
 
-# Install system dependencies
-apt-get update && apt-get install -y wget curl unzip build-essential python3-dev
+# Install system dependencies including git
+apt-get update && apt-get install -y wget curl unzip build-essential python3-dev git
 rm -rf /var/lib/apt/lists/*
 
 # Install Chrome
@@ -35,6 +35,7 @@ pip install \
     requests==2.32.3 \
     python-dotenv==1.0.1 \
     lxml==5.3.0 \
-    beautifulsoup4==4.12.3
+    beautifulsoup4==4.12.3 \
+    gitpython==3.1.41
 
 echo "✅ Build completed!"
