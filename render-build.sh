@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Exit on error
 set -o errexit
 
 echo "Starting build process..."
 
 # Install system dependencies
-echo "Installing system dependencies..."
 apt-get update && apt-get install -y \
     build-essential \
     python3-dev \
@@ -14,7 +12,7 @@ apt-get update && apt-get install -y \
     unzip \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Chrome for Selenium
+# Install Chrome
 STORAGE_DIR=/opt/render/project/.render
 
 if [[ ! -d $STORAGE_DIR/chrome ]]; then
@@ -22,12 +20,10 @@ if [[ ! -d $STORAGE_DIR/chrome ]]; then
   mkdir -p $STORAGE_DIR/chrome
   cd $STORAGE_DIR/chrome
   
-  # Download and extract Chrome
   wget -q -O chrome.zip "https://storage.googleapis.com/chrome-for-testing-public/123.0.6312.122/linux64/chrome-linux64.zip"
   unzip -q chrome.zip
   rm chrome.zip
   
-  # Download ChromeDriver
   wget -q -O chromedriver.zip "https://storage.googleapis.com/chrome-for-testing-public/123.0.6312.122/linux64/chromedriver-linux64.zip"
   unzip -q chromedriver.zip
   rm chromedriver.zip
@@ -42,20 +38,12 @@ export CHROME_PATH="$STORAGE_DIR/chrome/chrome-linux64/chrome"
 export CHROMEDRIVER_PATH="$STORAGE_DIR/chrome/chromedriver-linux64/chromedriver"
 export PATH="$STORAGE_DIR/chrome/chrome-linux64:$STORAGE_DIR/chrome/chromedriver-linux64:$PATH"
 
-# CRITICAL: Upgrade pip and force wheel usage
-echo "Upgrading pip and installing build tools..."
+# Upgrade pip
+echo "Upgrading pip..."
 python -m pip install --upgrade pip setuptools wheel
 
-# Install numpy first (pandas dependency) - force binary only
-echo "Installing numpy..."
-pip install --only-binary=:all: numpy==1.24.3
-
-# Install pandas - force binary only
-echo "Installing pandas..."
-pip install --only-binary=:all: pandas==1.5.3
-
-# Install remaining requirements
-echo "Installing remaining dependencies..."
+# Install all dependencies - let pip resolve versions
+echo "Installing dependencies..."
 pip install -r requirements.txt
 
 echo "Build completed successfully!"
