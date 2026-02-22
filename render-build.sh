@@ -44,6 +44,6 @@ python -m pip install --upgrade pip setuptools wheel
 
 # Install all dependencies - let pip resolve versions
 echo "Installing dependencies..."
-pip install -r requirements.txt
 
+pip install -r requirements.txt
 echo "Build completed successfully!"
