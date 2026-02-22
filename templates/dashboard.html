@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Odileague Scraper - Detailed Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Detailed Dashboard</h1>
+            <nav>
+                <a href="/" class="nav-link">Home</a>
+                <a href="/logs" class="nav-link">Logs</a>
+                <a href="/debug" class="nav-link">Debug</a>
+            </nav>
+        </header>
+
+        <div class="dashboard-grid detailed">
+            <!-- Timeline Card -->
+            <div class="card timeline-card">
+                <h2>Scraping Timeline</h2>
+                <div class="timeline" id="timeline">
+                    <div class="timeline-item completed">
+                        <div class="timeline-time">00:00</div>
+                        <div class="timeline-content">Initialize Scraper</div>
+                    </div>
+                    <div class="timeline-item {{ 'completed' if 'Primary Markets' in status.stages_completed }}">
+                        <div class="timeline-time">00:15</div>
+                        <div class="timeline-content">Primary Markets</div>
+                    </div>
+                    <div class="timeline-item {{ 'completed' if 'Results' in status.stages_completed }}">
+                        <div class="timeline-time">00:30</div>
+                        <div class="timeline-content">Results</div>
+                    </div>
+                    <div class="timeline-item {{ 'completed' if 'Standings' in status.stages_completed }}">
+                        <div class="timeline-time">00:45</div>
+                        <div class="timeline-content">Standings</div>
+                    </div>
+                    <div class="timeline-item {{ 'completed' if 'GitHub Sync' in status.stages_completed }}">
+                        <div class="timeline-time">00:55</div>
+                        <div class="timeline-content">GitHub Sync</div>
+                    </div>
+                    <div class="timeline-item {{ 'completed' if 'Completed' in status.current_stage }}">
+                        <div class="timeline-time">01:00</div>
+                        <div class="timeline-content">Complete</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Stats Card -->
+            <div class="card detailed-stats">
+                <h2>Detailed Statistics</h2>
+                <table class="stats-table">
+                    <tr>
+                        <th>Metric</th>
+                        <th>Value</th>
+                    </tr>
+                    <tr>
+                        <td>Total Runs</td>
+                        <td id="total-runs">Loading...</td>
+                    </tr>
+                    <tr>
+                        <td>Success Rate</td>
+                        <td id="success-rate">Loading...</td>
+                    </tr>
+                    <tr>
+                        <td>Avg Matches per Run</td>
+                        <td id="avg-matches">Loading...</td>
+                    </tr>
+                    <tr>
+                        <td>Last Run Duration</td>
+                        <td id="last-duration">Loading...</td>
+                    </tr>
+                    <tr>
+                        <td>Uptime</td>
+                        <td id="uptime">Loading...</td>
+                    </tr>
+                </table>
+            </div>
+
+            <!-- Data Size Card -->
+            <div class="card data-card">
+                <h2>Data Storage</h2>
+                <div class="data-stats">
+                    <div class="data-item">
+                        <span class="data-label">Primary Markets:</span>
+                        <span class="data-value" id="primary-size">Calculating...</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Results:</span>
+                        <span class="data-value" id="results-size">Calculating...</span>
+                    </div>
+                    <div class="data-item">
+                        <span class="data-label">Standings:</span>
+                        <span class="data-value" id="standings-size">Calculating...</span>
+                    </div>
+                    <div class="data-item total">
+                        <span class="data-label">Total:</span>
+                        <span class="data-value" id="total-size">Calculating...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Performance Chart -->
+            <div class="card performance-card">
+                <h2>Performance Metrics</h2>
+                <canvas id="performance-chart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function calculateDataSize() {
+            // This would be replaced with actual API calls
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Simulate data size calculation
+                    document.getElementById('primary-size').innerText = 
+                        (data.stats.primary_markets.matches * 2).toFixed(1) + ' KB';
+                    document.getElementById('results-size').innerText = 
+                        (data.stats.results.matches * 1.5).toFixed(1) + ' KB';
+                    document.getElementById('standings-size').innerText = 
+                        (data.stats.standings.teams * 0.5).toFixed(1) + ' KB';
+                    
+                    const total = (data.stats.primary_markets.matches * 2 + 
+                                  data.stats.results.matches * 1.5 + 
+                                  data.stats.standings.teams * 0.5).toFixed(1);
+                    document.getElementById('total-size').innerText = total + ' KB';
+                });
+        }
+
+        function loadHistoryStats() {
+            fetch('/api/history')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.runs && data.runs.length > 0) {
+                        document.getElementById('total-runs').innerText = data.runs.length;
+                        
+                        const successful = data.runs.filter(r => r.status === 'success').length;
+                        const successRate = ((successful / data.runs.length) * 100).toFixed(1);
+                        document.getElementById('success-rate').innerText = successRate + '%';
+                        
+                        const avgMatches = (data.runs.reduce((sum, r) => sum + (r.matches || 0), 0) / data.runs.length).toFixed(0);
+                        document.getElementById('avg-matches').innerText = avgMatches;
+                        
+                        if (data.runs[0].duration) {
+                            document.getElementById('last-duration').innerText = 
+                                (data.runs[0].duration / 60).toFixed(1) + ' minutes';
+                        }
+                    }
+                });
+        }
+
+        function calculateUptime() {
+            const startTime = new Date('{{ status.start_time or "2024-01-01" }}');
+            const now = new Date();
+            const diff = Math.floor((now - startTime) / 1000);
+            
+            const hours = Math.floor(diff / 3600);
+            const minutes = Math.floor((diff % 3600) / 60);
+            
+            document.getElementById('uptime').innerText = `${hours}h ${minutes}m`;
+        }
+
+        // Initialize
+        calculateDataSize();
+        loadHistoryStats();
+        calculateUptime();
+        
+        // Update every 30 seconds
+        setInterval(() => {
+            calculateDataSize();
+            calculateUptime();
+        }, 30000);
+    </script>
+</body>
+</html>

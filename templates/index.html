@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Odileague Scraper Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🏆 Odileague Scraper Monitor</h1>
+            <div class="status-badge" id="status-badge">
+                {{ status.running and '🟢 Running' or '⚪ Idle' }}
+            </div>
+        </header>
+
+        <div class="dashboard-grid">
+            <!-- Current Status Card -->
+            <div class="card status-card">
+                <h2>Current Status</h2>
+                <div class="status-info">
+                    <div class="status-item">
+                        <span class="label">Stage:</span>
+                        <span class="value" id="current-stage">{{ status.current_stage }}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Progress:</span>
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill" style="width: {{ status.progress }}%"></div>
+                        </div>
+                        <span class="progress-text" id="progress-text">{{ status.progress }}%</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Last Run:</span>
+                        <span class="value" id="last-run">{{ status.last_run or 'Never' }}</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="label">Next Run:</span>
+                        <span class="value" id="next-run">{{ status.next_run or 'Not scheduled' }}</span>
+                    </div>
+                </div>
+                <div class="action-buttons">
+                    <button onclick="startScraper()" class="btn btn-success" {{ 'disabled' if status.running }}>Start Scraper</button>
+                    <button onclick="stopScraper()" class="btn btn-danger" {{ 'disabled' if not status.running }}>Stop Scraper</button>
+                </div>
+            </div>
+
+            <!-- Statistics Card -->
+            <div class="card stats-card">
+                <h2>Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="stat-value" id="primary-matches">{{ status.stats.primary_markets.matches }}</div>
+                        <div class="stat-label">Primary Matches</div>
+                        <div class="stat-status" id="primary-status">{{ status.stats.primary_markets.status }}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="results-matches">{{ status.stats.results.matches }}</div>
+                        <div class="stat-label">Results Matches</div>
+                        <div class="stat-status" id="results-status">{{ status.stats.results.status }}</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-value" id="standings-teams">{{ status.stats.standings.teams }}</div>
+                        <div class="stat-label">Standings Teams</div>
+                        <div class="stat-status" id="standings-status">{{ status.stats.standings.status }}</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Errors Card -->
+            <div class="card errors-card">
+                <h2>Recent Errors</h2>
+                <div class="errors-list" id="errors-list">
+                    {% if status.errors %}
+                        {% for error in status.errors[-5:] %}
+                            <div class="error-item">{{ error }}</div>
+                        {% endfor %}
+                    {% else %}
+                        <div class="no-errors">No errors</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Chart Card -->
+            <div class="card chart-card">
+                <h2>Scraping History (Last 7 Days)</h2>
+                <canvas id="history-chart"></canvas>
+            </div>
+
+            <!-- Quick Links Card -->
+            <div class="card links-card">
+                <h2>Quick Links</h2>
+                <div class="links-grid">
+                    <a href="/dashboard" class="link-item">
+                        <span class="link-icon">📊</span>
+                        <span class="link-text">Detailed Dashboard</span>
+                    </a>
+                    <a href="/logs" class="link-item">
+                        <span class="link-icon">📝</span>
+                        <span class="link-text">View Logs</span>
+                    </a>
+                    <a href="https://github.com/JimmyNutron-star/data" target="_blank" class="link-item">
+                        <span class="link-icon">📁</span>
+                        <span class="link-text">GitHub Repository</span>
+                    </a>
+                    <a href="/debug" class="link-item">
+                        <span class="link-icon">🔧</span>
+                        <span class="link-text">Debug Info</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+    <script>
+        // Initialize chart
+        let historyChart;
+        
+        function updateDashboard() {
+            fetch('/api/status')
+                .then(response => response.json())
+                .then(data => {
+                    // Update status badge
+                    document.getElementById('status-badge').innerHTML = data.running ? '🟢 Running' : '⚪ Idle';
+                    
+                    // Update stage
+                    document.getElementById('current-stage').innerText = data.current_stage;
+                    
+                    // Update progress
+                    document.getElementById('progress-fill').style.width = data.progress + '%';
+                    document.getElementById('progress-text').innerText = data.progress + '%';
+                    
+                    // Update last run
+                    document.getElementById('last-run').innerText = data.last_run || 'Never';
+                    document.getElementById('next-run').innerText = data.next_run || 'Not scheduled';
+                    
+                    // Update stats
+                    document.getElementById('primary-matches').innerText = data.stats.primary_markets.matches;
+                    document.getElementById('results-matches').innerText = data.stats.results.matches;
+                    document.getElementById('standings-teams').innerText = data.stats.standings.teams;
+                    
+                    document.getElementById('primary-status').innerText = data.stats.primary_markets.status;
+                    document.getElementById('primary-status').className = 'stat-status ' + data.stats.primary_markets.status;
+                    
+                    document.getElementById('results-status').innerText = data.stats.results.status;
+                    document.getElementById('results-status').className = 'stat-status ' + data.stats.results.status;
+                    
+                    document.getElementById('standings-status').innerText = data.stats.standings.status;
+                    document.getElementById('standings-status').className = 'stat-status ' + data.stats.standings.status;
+                    
+                    // Update errors
+                    const errorsList = document.getElementById('errors-list');
+                    if (data.errors && data.errors.length > 0) {
+                        errorsList.innerHTML = data.errors.slice(-5).map(error => 
+                            `<div class="error-item">${error}</div>`
+                        ).join('');
+                    } else {
+                        errorsList.innerHTML = '<div class="no-errors">No errors</div>';
+                    }
+                    
+                    // Update buttons
+                    document.querySelector('.btn-success').disabled = data.running;
+                    document.querySelector('.btn-danger').disabled = !data.running;
+                });
+        }
+
+        function startScraper() {
+            fetch('/api/start', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'started') {
+                        alert('Scraper started successfully!');
+                        updateDashboard();
+                    }
+                });
+        }
+
+        function stopScraper() {
+            fetch('/api/stop', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'stopping') {
+                        alert('Scraper stopping...');
+                        updateDashboard();
+                    }
+                });
+        }
+
+        // Update every 5 seconds
+        setInterval(updateDashboard, 5000);
+        
+        // Load history chart
+        fetch('/api/history')
+            .then(response => response.json())
+            .then(data => {
+                const ctx = document.getElementById('history-chart').getContext('2d');
+                
+                // Process data for chart
+                const dates = [];
+                const matches = [];
+                
+                if (data.runs && data.runs.length > 0) {
+                    data.runs.slice(0, 7).forEach(run => {
+                        dates.push(new Date(run.timestamp).toLocaleDateString());
+                        matches.push(run.matches || 0);
+                    });
+                }
+                
+                historyChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: dates.reverse(),
+                        datasets: [{
+                            label: 'Matches Scraped',
+                            data: matches.reverse(),
+                            borderColor: '#4CAF50',
+                            backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                            tension: 0.1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            });
+    </script>
+</body>
+</html>
